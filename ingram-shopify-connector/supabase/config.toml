@@ -1,0 +1,8 @@
+[functions.ingram-sync]
+verify_jwt = true
+
+[functions.shopify-sync]
+verify_jwt = true
+
+[functions.stock-sync]
+verify_jwt = true
