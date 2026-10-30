@@ -1,0 +1,13 @@
+{
+  "projectId": "72509109",
+  "functions": {
+    "ingram-sync": {
+      "hasChanged": false,
+      "hash": "862f274647f83292f86eca7574b995d6bfc25020be15886c7ac1f668c611fcd3"
+    },
+    "shopify-sync": {
+      "hasChanged": false,
+      "hash": "fb444d0b959194127871018dc94bf606a5fb54985b6bc6f42f1edb2c57adb015"
+    }
+  }
+}
