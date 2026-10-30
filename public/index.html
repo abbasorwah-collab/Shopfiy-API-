@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Stock Monitor</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1a1d23; --muted:#6b7280; --line:#e5e7eb;
+          --out:#b91c1c; --outbg:#fee2e2; --low:#92400e; --lowbg:#fef3c7; --ok:#166534; --okbg:#dcfce7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111317; --card:#1b1e24; --text:#e8eaed; --muted:#9aa0a6; --line:#2d3139;
+            --out:#fca5a5; --outbg:#450a0a; --low:#fcd34d; --lowbg:#422006; --ok:#86efac; --okbg:#052e16; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  h1 { font-size:20px; margin:0; }
+  .live { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:13px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#9ca3af; }
+  .dot.on { background:#22c55e; } .dot.err { background:#ef4444; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  select, input { padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); font:inherit; }
+  .summary { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .pill { padding:6px 12px; border-radius:999px; font-size:13px; font-weight:600; }
+  .pill.out { background:var(--outbg); color:var(--out); } .pill.low { background:var(--lowbg); color:var(--low); } .pill.ok { background:var(--okbg); color:var(--ok); }
+  .wrap { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:10px 14px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  tr:last-child td { border-bottom:0; }
+  td.qty { font-variant-numeric:tabular-nums; font-weight:600; }
+  .badge { padding:3px 9px; border-radius:999px; font-size:12px; font-weight:600; }
+  .badge.out_of_stock { background:var(--outbg); color:var(--out); }
+  .badge.low { background:var(--lowbg); color:var(--low); }
+  .badge.in_stock { background:var(--okbg); color:var(--ok); }
+  tr.flash { animation: flash 2s ease-out; }
+  @keyframes flash { from { background:rgba(250,204,21,.45); } to { background:transparent; } }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Live Stock Monitor</h1>
+  <span class="live"><span class="dot" id="dot"></span><span id="status">Connecting…</span></span>
+</header>
+
+<div class="summary" id="summary"></div>
+
+<div class="controls">
+  <select id="sort">
+    <option value="stock-asc">Stock: low to high</option>
+    <option value="stock-desc">Stock: high to low</option>
+    <option value="name-asc">Name: A to Z</option>
+  </select>
+  <select id="filter">
+    <option value="">All items</option>
+    <option value="out_of_stock">Out of stock only</option>
+    <option value="low">Low stock only</option>
+    <option value="in_stock">In stock only</option>
+  </select>
+  <input id="search" type="search" placeholder="Search product or SKU">
+</div>
+
+<div class="wrap">
+  <table>
+    <thead><tr><th>Product</th><th>Variant</th><th>SKU</th><th>Stock</th><th>Status</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+  let data = { items: [], updatedAt: null, lastError: null };
+  let changed = new Set();
+  const $ = (id) => document.getElementById(id);
+  const labels = { out_of_stock: "Out of stock", low: "Low stock", in_stock: "In stock" };
+
+  function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+  function render() {
+    const [sort, order] = $("sort").value.split("-");
+    const filter = $("filter").value;
+    const q = $("search").value.trim().toLowerCase();
+    const dir = order === "desc" ? -1 : 1;
+
+    let items = data.items.filter((r) =>
+      (!filter || r.status === filter) &&
+      (!q || r.product.toLowerCase().includes(q) || (r.sku || "").toLowerCase().includes(q)));
+
+    items = [...items].sort((a, b) => {
+      if (sort === "name") return dir * a.product.localeCompare(b.product);
+      if (a.quantity == null && b.quantity == null) return 0;
+      if (a.quantity == null) return 1;
+      if (b.quantity == null) return -1;
+      return dir * (a.quantity - b.quantity);
+    });
+
+    const all = data.items;
+    const count = (s) => all.filter((r) => r.status === s).length;
+    $("summary").innerHTML =
+      `<span class="pill out">${count("out_of_stock")} out of stock</span>` +
+      `<span class="pill low">${count("low")} low (≤ ${data.lowStockThreshold ?? 5})</span>` +
+      `<span class="pill ok">${count("in_stock")} in stock</span>`;
+
+    $("rows").innerHTML = items.map((r) => `
+      <tr class="${changed.has(r.variantId) ? "flash" : ""}">
+        <td>${esc(r.product)}</td>
+        <td class="muted">${esc(r.variant) || "—"}</td>
+        <td class="muted">${esc(r.sku) || "—"}</td>
+        <td class="qty">${r.quantity == null ? "—" : r.quantity}</td>
+        <td><span class="badge ${r.status}">${labels[r.status]}</span></td>
+      </tr>`).join("") || `<tr><td colspan="5" class="muted">No items match.</td></tr>`;
+    changed = new Set();
+  }
+
+  function apply(payload, changes = []) {
+    data = payload;
+    changed = new Set(changes.map((c) => c.variantId));
+    const time = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString() : "waiting for first sync";
+    $("dot").className = "dot " + (data.lastError ? "err" : "on");
+    $("status").textContent = data.lastError ? `Sync error (showing data from ${time})` : `Live · updated ${time}`;
+    render();
+  }
+
+  const es = new EventSource("/events");
+  es.addEventListener("snapshot", (e) => apply(JSON.parse(e.data)));
+  es.addEventListener("update", (e) => { const p = JSON.parse(e.data); apply(p, p.changes); });
+  es.onerror = () => { $("dot").className = "dot err"; $("status").textContent = "Disconnected, retrying…"; };
+
+  ["sort", "filter", "search"].forEach((id) => $(id).addEventListener("input", render));
+</script>
+</body>
+</html>

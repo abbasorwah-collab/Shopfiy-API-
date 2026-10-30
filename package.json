@@ -1,12 +1,13 @@
 {
   "name": "shopify-api",
-  "version": "0.1.0",
-  "description": "Small Express service wrapping the Shopify Admin GraphQL API",
+  "version": "0.2.0",
+  "description": "Express service wrapping the Shopify Admin GraphQL API, with a live stock monitor",
   "main": "src/server.js",
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "register-webhooks": "node scripts/register-webhooks.js"
   },
   "engines": {
     "node": ">=18"
